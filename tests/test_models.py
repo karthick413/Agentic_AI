@@ -1,4 +1,5 @@
 import pytest
+import json
 from pydantic import ValidationError
 
 from agentic_ai.models import Ticket
@@ -44,3 +45,11 @@ def test_invalid_id_rejected():
 def test_unknown_priority_rejected():
     with pytest.raises(ValidationError):
         Ticket(**{**VALID, "priority": "critical"})
+
+
+def test_json_schema_has_fields():
+    schema = Ticket.model_json_schema()
+
+    print(json.dumps(schema, indent=4))
+
+    assert "title" in schema["properties"]
