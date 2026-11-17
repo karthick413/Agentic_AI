@@ -1,5 +1,6 @@
-import pytest
 import json
+
+import pytest
 from pydantic import ValidationError
 
 from agentic_ai.models import Ticket
