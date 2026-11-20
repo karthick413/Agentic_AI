@@ -5,9 +5,11 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
+from agentic_ai import config
+from agentic_ai.llm import LLMClient
 from agentic_ai.models import Ticket
 from agentic_ai.schemas import SummarizeRequest, SummarizeResponse
-from agentic_ai.summarizer import StubSummarizer
+from agentic_ai.summarizer import LLMSummarizer, StubSummarizer, Summarizer
 
 app = FastAPI(title="Agentic AI Service", version="0.1.0")
 
@@ -16,7 +18,10 @@ TICKETS: dict[int, Ticket] = {}
 
 
 @lru_cache
-def get_summarizer() -> StubSummarizer:
+def get_summarizer() -> Summarizer:
+    """Use the real LLM when configured, otherwise fall back to the stub."""
+    if config.LLM_API_KEY and config.LLM_MODEL:
+        return LLMSummarizer(LLMClient())
     return StubSummarizer()
 
 
@@ -28,7 +33,7 @@ async def health() -> dict[str, str]:
 @app.post("/summarize", response_model=SummarizeResponse)
 async def summarize(
     req: SummarizeRequest,
-    summarizer: StubSummarizer = Depends(get_summarizer),
+    summarizer: Summarizer = Depends(get_summarizer),
 ) -> SummarizeResponse:
     summary = await summarizer.summarize(req.text, req.max_words)
     return SummarizeResponse(
@@ -47,14 +52,17 @@ def sse(data: dict, event: str | None = None) -> str:
 @app.post("/summarize/stream")
 async def summarize_stream(
     req: SummarizeRequest,
-    summarizer: StubSummarizer = Depends(get_summarizer),
+    summarizer: Summarizer = Depends(get_summarizer),
 ) -> StreamingResponse:
     async def event_stream() -> AsyncIterator[str]:
-        count = 0
+        parts: list[str] = []
         async for token in summarizer.stream(req.text, req.max_words):
-            count += 1
+            parts.append(token)
             yield sse({"token": token})
-        yield sse({"word_count": count, "model": summarizer.model_name}, event="done")
+        word_count = len("".join(parts).split())
+        yield sse(
+            {"word_count": word_count, "model": summarizer.model_name}, event="done"
+        )
 
     return StreamingResponse(
         event_stream(),

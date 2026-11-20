@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -71,3 +73,14 @@ def test_duplicate_ticket_conflict(client):
 
 def test_missing_ticket_404(client):
     assert client.get("/tickets/999").status_code == 404
+
+
+def test_stream_done_reports_word_count(client):
+    with client.stream(
+        "POST", "/summarize/stream", json={"text": TEXT, "max_words": 5}
+    ) as r:
+        assert r.status_code == 200
+        body = "".join(r.iter_text())
+    data_lines = [ln for ln in body.splitlines() if ln.startswith("data:")]
+    done = json.loads(data_lines[-1][len("data:"):])
+    assert done["word_count"] == 5
